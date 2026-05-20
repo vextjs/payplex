@@ -77,20 +77,21 @@ export default defineConfig({
           ],
         },
         {
-          text: "核心概念",
+          text: "内置 Provider",
           items: [
-            { text: "Provider 体系", link: "/guide/providers" },
-            { text: "插件系统", link: "/guide/plugin-system" },
-            { text: "公共签名层", link: "/guide/signatures" },
-            { text: "Webhook 路由", link: "/guide/webhook" },
-            { text: "生命周期 Hook", link: "/guide/hooks" },
-            { text: "能力分层", link: "/guide/capability-layer" },
+            { text: "Stripe", link: "/guide/stripe" },
           ],
         },
         {
-          text: "持久化",
+          text: "核心概念",
           items: [
-            { text: "monSQLize 集成", link: "/guide/persistence" },
+            { text: "Provider 体系", link: "/guide/providers" },
+            { text: "Webhook 路由", link: "/guide/webhook" },
+            { text: "生命周期 Hook", link: "/guide/hooks" },
+            { text: "持久化（monSQLize）", link: "/guide/persistence" },
+            { text: "公共签名层", link: "/guide/signatures" },
+            { text: "插件系统", link: "/guide/plugin-system" },
+            { text: "能力分层", link: "/guide/capability-layer" },
           ],
         },
         {

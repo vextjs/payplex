@@ -1,6 +1,6 @@
 # Stripe 基础集成
 
-本示例展示在 Express 项目中集成 PayPlex + Stripe 的完整流程。
+本示例展示在 Express 项目中集成 PayPlex + Stripe 的完整流程，包含下单、Webhook 接收和退款。
 
 ## 安装
 
@@ -14,38 +14,53 @@ npm install -D @types/express typescript
 ```
 my-payment-app/
 ├── src/
-│   ├── index.ts
-│   ├── pay.ts          # PayPlex 实例
+│   ├── index.ts          # Express 应用入口
+│   ├── pay.ts            # PayPlex 单例
 │   └── routes/
-│       └── payment.ts  # 支付路由
+│       └── payment.ts    # 支付路由
+├── .env
 ├── package.json
 └── tsconfig.json
 ```
 
-## 初始化 PayPlex
+## 环境变量（`.env`）
+
+```ini
+MONGODB_URL=mongodb://localhost:27017
+DB_NAME=my-app-payments
+STRIPE_SECRET_KEY=sk_test_51...
+STRIPE_WEBHOOK_SECRET=whsec_...
+APP_URL=http://localhost:3000
+```
+
+## 初始化 PayPlex（`src/pay.ts`）
 
 ```typescript
-// src/pay.ts
 import { PayPlex } from 'payplex'
 import { stripeProvider } from 'payplex/stripe'
-import { MonSQLize } from 'monsqlize'
-
-const db = new MonSQLize({
-  url: process.env.MONGODB_URL!,
-  dbName: 'my-app-payments',
-})
-
-await db.connect()
 
 export const pay = new PayPlex({
-  db,
+  db: {
+    url: process.env.MONGODB_URL!,
+    dbName: process.env.DB_NAME ?? 'my-app-payments',
+  },
   hooks: {
     onPaymentSuccess: async (event) => {
       console.log(`✅ 支付成功：${event.orderId}，金额：${event.amount}`)
-      // 在这里触发业务逻辑：发货、激活会员等
+      // 激活服务、发货、发送确认邮件等
+      await fulfillOrder(event.orderId)
     },
     onPaymentFailed: async (event) => {
       console.log(`❌ 支付失败：${event.orderId}`)
+      await notifyUserPaymentFailed(event.orderId)
+    },
+    onRefundSuccess: async (event) => {
+      console.log(`💸 退款成功：${event.orderId}`)
+      await notifyUserRefundComplete(event.orderId)
+    },
+    onWebhookError: async (err, raw) => {
+      console.error('Webhook 处理失败：', err.message)
+      // 生产环境建议接入告警系统（如 Sentry、PagerDuty）
     },
   },
 })
@@ -58,21 +73,20 @@ pay.useProvider(
 )
 ```
 
-## 支付路由
+## 支付路由（`src/routes/payment.ts`）
 
 ```typescript
-// src/routes/payment.ts
 import { Router } from 'express'
 import { pay } from '../pay'
 import { PayPlexProviderError } from 'payplex'
 
 const router = Router()
 
-// 创建支付
+// 创建支付订单
 router.post('/create', async (req, res) => {
-  const { amount, currency, subject } = req.body
+  const { amount, currency, subject, userId } = req.body
 
-  const orderId = `order_${Date.now()}`   // 你的业务订单 ID
+  const orderId = `order_${userId}_${Date.now()}`
 
   try {
     const order = await pay.provider('stripe').createOrder({
@@ -85,8 +99,8 @@ router.post('/create', async (req, res) => {
 
     res.json({
       orderId: order.orderId,
-      paymentUrl: order.paymentUrl,      // 如果是 Checkout Session 模式
-      clientSecret: order.raw?.client_secret,  // 如果是 PaymentIntent 模式
+      paymentUrl: order.paymentUrl,              // Checkout 模式：跳转支付页
+      clientSecret: (order.raw as any)?.client_secret, // PaymentIntent 模式：传给前端 Stripe.js
     })
   } catch (err) {
     if (err instanceof PayPlexProviderError) {
@@ -97,65 +111,43 @@ router.post('/create', async (req, res) => {
   }
 })
 
-// 查询订单
+// 查询订单状态
 router.get('/order/:orderId', async (req, res) => {
   const order = await pay.provider('stripe').queryOrder(req.params.orderId)
   res.json(order)
 })
 
-// 退款
+// 发起退款
 router.post('/refund', async (req, res) => {
   const { orderId, amount, reason } = req.body
 
   const refund = await pay.provider('stripe').refund({
     orderId,
     refundId: `refund_${Date.now()}`,
-    amount,
+    amount,      // 部分退款金额（分）。不传则全额退款
     reason,
   })
 
-  res.json(refund)
+  res.json({ refundId: refund.refundId, status: refund.status })
 })
-
-// Webhook 处理（需要 raw body）
-router.post(
-  '/webhooks/stripe',
-  (req, res, next) => {
-    // express.raw() 可以在这里局部应用，或全局配置
-    next()
-  },
-  async (req, res) => {
-    try {
-      const event = await pay.provider('stripe').verifyWebhook(
-        req.body,
-        req.headers['stripe-signature'] as string
-      )
-      res.json({ received: true })
-    } catch {
-      res.status(400).send('Webhook signature verification failed')
-    }
-  }
-)
 
 export { router as paymentRouter }
 ```
 
-## 应用入口
+## 应用入口（`src/index.ts`）
 
 ```typescript
-// src/index.ts
 import express from 'express'
 import { paymentRouter } from './routes/payment'
+import { pay } from './pay'
 
 const app = express()
 
-// 重要：Webhook 路由必须在 express.json() 之前注册，以保留 raw body
+// ⚠️ Webhook 必须在 express.json() 之前注册，使用 raw body
 app.post(
   '/webhooks/stripe',
   express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    // 或者将 Stripe Webhook 路由单独处理
-  }
+  pay.createHandler('stripe')   // 一行搞定验签 + Hook 触发
 )
 
 app.use(express.json())
@@ -166,21 +158,16 @@ app.listen(3000, () => {
 })
 ```
 
-## 环境变量
-
-```ini
-MONGODB_URL=mongodb://localhost:27017
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-APP_URL=http://localhost:3000
-```
-
-## 测试 Webhook
-
-使用 Stripe CLI 在本地测试 Webhook：
+## 本地测试 Webhook
 
 ```bash
-stripe listen --forward-to localhost:3000/webhooks/stripe
-stripe trigger payment_intent.succeeded
-```
+# 安装 Stripe CLI
+brew install stripe/stripe-cli/stripe
 
+# 转发 Webhook（会输出 Webhook Secret，更新到 .env）
+stripe listen --forward-to localhost:3000/webhooks/stripe
+
+# 另开一个终端，触发测试事件
+stripe trigger payment_intent.succeeded
+stripe trigger charge.refunded
+```
