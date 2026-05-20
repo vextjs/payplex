@@ -9,7 +9,8 @@
 ## 菲律宾：PayMongo 集成
 
 ```bash
-npm install payplex-paymongo
+# 规划中的未来包名（当前尚未发布）
+# npm install payplex-paymongo
 ```
 
 ```typescript
@@ -43,7 +44,8 @@ const order = await pay.provider('paymongo').createOrder({
 ## 印度：Razorpay 集成
 
 ```bash
-npm install payplex-razorpay razorpay
+# 规划中的未来包名（当前尚未发布）
+# npm install payplex-razorpay razorpay
 ```
 
 ```typescript
