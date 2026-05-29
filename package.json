@@ -1,6 +1,6 @@
 {
   "name": "payplex",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
   "description": "A unified payment middleware — route Stripe, Alipay, WeChat Pay and any custom provider through a single multiplexed interface with a defineProvider() plugin system",
   "main": "./index.js",
@@ -14,6 +14,9 @@
     "index.js",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "payment",
     "stripe",
