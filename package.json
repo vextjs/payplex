@@ -1,6 +1,6 @@
 {
   "name": "payplex",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "description": "A unified payment middleware — route Stripe, Alipay, WeChat Pay and any custom provider through a single multiplexed interface with a defineProvider() plugin system",
   "main": "./index.js",
@@ -29,6 +29,10 @@
     "plugin"
   ],
   "author": "Rocky",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vextjs/payplex.git"
+  }
 }
 
